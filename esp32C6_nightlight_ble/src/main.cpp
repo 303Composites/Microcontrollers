@@ -62,23 +62,32 @@ struct {
 
 #include <Arduino.h>
 
-#define TEMT6000 A1
-#define VBATT A2
-#define PIN_NIGHT_LIGHT_SWITCH D4
-int lightCorrFactor = 1;
-
+#define TEMT6000 A1 //TEMT6000 Photolight sensor
+#define VBATT A2 //ADC pin for reading battery voltage
+#define PIN_NIGHT_LIGHT_SWITCH D4 //D5 can also be used as an additional LED power pin
+int lightCorrFactor = 1; //intial correction factor aka none
 float vBatt = 0.0;
+float lightAverage = 0;
+
+
+
 
 void setup() 
 {
+  //Included by default
   RemoteXY_Init (); 
+
+  //Enable for debugging
   Serial.begin(115200);
   
+  //ESP32C6 pin setup
   pinMode (PIN_NIGHT_LIGHT_SWITCH, OUTPUT); //Switch for night light
   pinMode (VBATT, INPUT); //Configures ADC for battery voltage reading
   pinMode (TEMT6000, INPUT); // TEMT6000 light sensor reading on pin A1
 
-  RemoteXY.lightSens = 0; // sets slider to the middle
+  //Intializes the slider
+  RemoteXY.lightSens = 0;                  // sets slider to the middle
+  RemoteXY.NIGHT_LIGHT_SWITCH = 0;         // Default to automatic mode
 
 }
 
@@ -95,10 +104,11 @@ void loop()
   float amps = volts / 10000.0; // across 10,000 Ohms
   float microamps = amps * 1e6;
   
-  // Apply user-defined correction factor (slider value)
+  // Personal room correction factor
   float correctionFactor = 1.0 + (RemoteXY.lightSens / 100.0); // Convert slider to multiplier
   float lux = microamps * 2.0 * correctionFactor; // Apply adjustment
   
+  //More debugging statements
   Serial.print("Light Intensity: ");
   Serial.print(lux);
   Serial.println(" lux");
@@ -109,7 +119,20 @@ void loop()
     Vbatt += analogReadMilliVolts(VBATT);
   }
   float Vbattf = 2 * Vbatt / 16 / 1000.0; // Adjust for voltage divider
-  RemoteXY.voltage = map(Vbattf * 1000, 275, 420, 0, 100); // Scale to percentage
+  RemoteXY.voltage = map(Vbattf * 1000, 280, 370, 0, 100); // Scale to percentage from 2.80 low voltage cutoff to 4.2 full charged
+
+  if (RemoteXY.NIGHT_LIGHT_SWITCH == 1) {
+    // Manual mode: override automatic control
+    digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH);
+  } else {
+    // Automatic mode: control based on lux value
+    if (lux < 20) {
+      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH); // Turn ON light in low light
+    } else if (lux > 25) {
+      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, LOW);  // Turn OFF light in sufficient light
+    }
+  }
+  
 
   Serial.print("Battery Voltage: ");
   Serial.print(Vbattf, 3);
