@@ -74,7 +74,7 @@ float lightAverage = 0;
 
 unsigned long startMillis; // set the intial time
 unsigned long currentMillis; // get the current time
-const unsigned long period = 60000;  // the value is a number of milliseconds aka the non-blocking delay
+const unsigned long period = 5000;  // the value is a number of milliseconds aka the non-blocking delay
 
 void setup() 
 {
@@ -91,6 +91,7 @@ void setup()
 
   //Start the timer
   startMillis = millis();  //initial start time
+  uint32_t Vbatt = 0;
 
   //Intializes the slider
   RemoteXY.lightSens = 0;                  // sets slider to the middle
@@ -102,58 +103,47 @@ void setup()
 void loop() 
 { 
   RemoteXY_Handler();
-
-  // Control night light switch
-  digitalWrite(PIN_NIGHT_LIGHT_SWITCH, RemoteXY.NIGHT_LIGHT_SWITCH ? HIGH : LOW);
-
-  // Light sensor calculations
-  float volts = analogRead(TEMT6000) * 3.3 / 4096.0; // Use 12-bit ADC resolution
-  float amps = volts / 10000.0; // across 10,000 Ohms
-  float microamps = amps * 1e6;
-  
-  // Personal room correction factor
-  float correctionFactor = 1.0 + (RemoteXY.lightSens / 100.0); // Convert slider to multiplier
-  float lux = microamps * 2.0 * correctionFactor; // Apply adjustment
-  
+  currentMillis = millis(); // Set current time
   // Battery voltage calculations
   uint32_t Vbatt = 0;
   for (int i = 0; i < 16; i++) {
     Vbatt += analogReadMilliVolts(VBATT);
   }
-  float Vbattf = 2 * Vbatt / 16 / 1000.0; // Adjust for voltage divider
-  RemoteXY.voltage = map(Vbattf * 1000, 280, 390, 0, 100); // Scale to percentage from 2.80 low voltage cutoff to 4.2 full charged 
-                                                           // Leaving this at 3.9v at full charged as this seems to be the voltage
-                                                           // at usb power
-  currentMillis = millis();  //get the current time
+  float Vbattf = 2 * Vbatt / 16 / 1000.0;
+  RemoteXY.voltage = map(Vbattf * 1000, 280, 390, 0, 100);
+  
+  // Control night light switch in manual mode
   if (RemoteXY.NIGHT_LIGHT_SWITCH == 1) {
-    // Manual mode: override automatic control
     digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH);
-  } else if (currentMillis - startMillis >= period) { // Check the time
-    // Automatic mode: control based on lux value
-    if (lux < 6) { // Recommended night light level max
-      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH); // Turn ON light in low light
-    } else if (lux > 21) { // Need to pick a value that is sufficiently far away to prevent nusaince tripping 
-      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, LOW);  // Turn OFF light in sufficient light
+    Serial.println("Manual Mode: Nightlight ON");
+    RemoteXY.voltage = map(Vbattf * 1000, 280, 390, 0, 100);
+  } 
+  else if (currentMillis - startMillis >= period) { // Automatic mode: check time interval
+    // Light sensor calculations
+    float volts = analogRead(TEMT6000) * 3.3 / 4096.0; // 12-bit ADC resolution
+    float amps = volts / 10000.0; 
+    float microamps = amps * 1e6;
+    // Apply correction factor based on slider value
+    float correctionFactor = 1.0 + (RemoteXY.lightSens / 100.0);
+    float lux = microamps * 2.0 * correctionFactor;
+    
+    //Debugging statements for fine tuning room
+    Serial.print("Current lux value:");
+    Serial.println(lux);
+
+    RemoteXY.voltage = map(Vbattf * 1000, 280, 390, 0, 100);
+    // Automatic control based on lux value
+    if (lux < 5) {
+      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH);
+      Serial.println("Automatic Mode: Nightlight ON");
+    } 
+    else if (lux > 12) {
+      digitalWrite(PIN_NIGHT_LIGHT_SWITCH, LOW);
+      Serial.println("Automatic Mode: Nightlight OFF");
     }
-    startMillis = currentMillis;  //IMPORTANT to save the start time of the current LED brightness
+
+    // Update the startMillis for the next interval
+    startMillis = currentMillis;
+    Serial.println("Reset Time");
   }
-
-  //Debugging statements:
-  /*
-  Serial.print("Battery Voltage: ");
-  Serial.print(Vbattf, 3);
-  Serial.println(" V");
-
-  RemoteXY_delay(1000);
-  Serial.print("Raw TEMT6000 ADC: ");
-  Serial.println(analogRead(TEMT6000));
-
-  Serial.print("Raw VBATT ADC: ");
-  Serial.println(analogRead(VBATT));
-
-  //More debugging statements
-  Serial.print("Light Intensity: ");
-  Serial.print(lux);
-  Serial.println(" lux");
- */
 }
