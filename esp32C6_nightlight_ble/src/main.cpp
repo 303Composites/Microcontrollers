@@ -1,5 +1,5 @@
 /*
-   -- Light_Controls --
+   -- Light_Controls_blake --
    
    This source code of graphical user interface 
    has been generated automatically by RemoteXY editor.
@@ -59,6 +59,9 @@ struct {
 
 } RemoteXY;   
 #pragma pack(pop)
+/////////////////////////////////////////////
+//           END RemoteXY include          //
+/////////////////////////////////////////////
 
 #include <Arduino.h>
 
@@ -69,8 +72,9 @@ int lightCorrFactor = 1; //intial correction factor aka none
 float vBatt = 0.0;
 float lightAverage = 0;
 
-
-
+unsigned long startMillis; // set the intial time
+unsigned long currentMillis; // get the current time
+const unsigned long period = 60000;  // the value is a number of milliseconds aka the non-blocking delay
 
 void setup() 
 {
@@ -84,6 +88,9 @@ void setup()
   pinMode (PIN_NIGHT_LIGHT_SWITCH, OUTPUT); //Switch for night light
   pinMode (VBATT, INPUT); //Configures ADC for battery voltage reading
   pinMode (TEMT6000, INPUT); // TEMT6000 light sensor reading on pin A1
+
+  //Start the timer
+  startMillis = millis();  //initial start time
 
   //Intializes the slider
   RemoteXY.lightSens = 0;                  // sets slider to the middle
@@ -108,32 +115,31 @@ void loop()
   float correctionFactor = 1.0 + (RemoteXY.lightSens / 100.0); // Convert slider to multiplier
   float lux = microamps * 2.0 * correctionFactor; // Apply adjustment
   
-  //More debugging statements
-  Serial.print("Light Intensity: ");
-  Serial.print(lux);
-  Serial.println(" lux");
-
   // Battery voltage calculations
   uint32_t Vbatt = 0;
   for (int i = 0; i < 16; i++) {
     Vbatt += analogReadMilliVolts(VBATT);
   }
   float Vbattf = 2 * Vbatt / 16 / 1000.0; // Adjust for voltage divider
-  RemoteXY.voltage = map(Vbattf * 1000, 280, 370, 0, 100); // Scale to percentage from 2.80 low voltage cutoff to 4.2 full charged
-
+  RemoteXY.voltage = map(Vbattf * 1000, 280, 390, 0, 100); // Scale to percentage from 2.80 low voltage cutoff to 4.2 full charged 
+                                                           // Leaving this at 3.9v at full charged as this seems to be the voltage
+                                                           // at usb power
+  currentMillis = millis();  //get the current time
   if (RemoteXY.NIGHT_LIGHT_SWITCH == 1) {
     // Manual mode: override automatic control
     digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH);
-  } else {
+  } else if (currentMillis - startMillis >= period) { // Check the time
     // Automatic mode: control based on lux value
-    if (lux < 20) {
+    if (lux < 6) { // Recommended night light level max
       digitalWrite(PIN_NIGHT_LIGHT_SWITCH, HIGH); // Turn ON light in low light
-    } else if (lux > 25) {
+    } else if (lux > 21) { // Need to pick a value that is sufficiently far away to prevent nusaince tripping 
       digitalWrite(PIN_NIGHT_LIGHT_SWITCH, LOW);  // Turn OFF light in sufficient light
     }
+    startMillis = currentMillis;  //IMPORTANT to save the start time of the current LED brightness
   }
-  
 
+  //Debugging statements:
+  /*
   Serial.print("Battery Voltage: ");
   Serial.print(Vbattf, 3);
   Serial.println(" V");
@@ -145,4 +151,9 @@ void loop()
   Serial.print("Raw VBATT ADC: ");
   Serial.println(analogRead(VBATT));
 
+  //More debugging statements
+  Serial.print("Light Intensity: ");
+  Serial.print(lux);
+  Serial.println(" lux");
+ */
 }
